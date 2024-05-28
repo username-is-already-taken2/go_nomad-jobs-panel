@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Jobs</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="/static/bootstrap.min.css">
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="/static/datatables.min.css">
+    <style>
+        body {
+            background-color: #343a40;
+            color: #ffffff;
+        }
+        .table-striped tbody tr:nth-of-type(odd) { background-color: rgba(255, 255, 255, 0.05); }
+        .table-striped tbody tr:nth-of-type(even) { background-color: rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">All Jobs</h1>
+        <a href="/periodic-jobs" class="btn btn-primary mb-3">View Periodic Jobs</a>
+        <table id="all-jobs" class="table table-dark table-striped mt-3">
+            <thead>
+                <tr>
+                    <th>Job ID</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Type</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .jobs}}
+                <tr>
+                    <td>{{.ID}}</td>
+                    <td>{{.Name}}</td>
+                    <td>{{.Status}}</td>
+                    <td>{{.Type}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- jQuery -->
+    <script src="/static/jquery.min.js"></script>
+    <!-- DataTables JS -->
+    <script src="/static/datatables.min.js"></script>
+    <!-- DataTables initialization -->
+    <script>
+        $(document).ready(function() {
+            $('#all-jobs').DataTable({
+                "paging": false,
+                "order": [[0, "asc"]] // Default ordering by Job ID
+            });
+        });
+    </script>
+</body>
+</html>

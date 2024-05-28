@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Periodic Jobs</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="/static/bootstrap.min.css">
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="/static/datatables.min.css">
+    <style>
+        body {
+            background-color: #343a40;
+            color: #ffffff;
+        }
+        .table-striped tbody tr:nth-of-type(odd) { background-color: rgba(255, 255, 255, 0.05); }
+        .table-striped tbody tr:nth-of-type(even) { background-color: rgba(255, 255, 255, 0.1); }
+        a.custom-link {
+            color: white;
+        }
+        a.custom-link:hover {
+            color: #ddd;
+        }    
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">Periodic Jobs</h1>
+        <a href="/all-jobs" class="btn btn-primary mb-3">View All Jobs</a>
+        <table id="periodic-jobs" class="table table-dark table-striped mt-3">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Type</th>
+                    <th>Schedule</th>
+                    <th>Next Run Time (Timestamp)</th>
+                    <th>Next Run Time (Text)</th>
+                    <th>Schedule (Human-Readable)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .periodicJobs}}
+                <tr>
+                    <td><a target="_blank" class="custom-link" href="{{ $.nomadAddress }}/ui/jobs/{{.ID}}@{{ $.nomadNamespace }}">{{.Name}}</a></td>
+                    <td>{{.Status}}</td>
+                    <td>{{.Type}}</td>
+                    <td>{{.Spec}}</td>
+                    <td>{{.NextRunTime}}</td>
+                    <td>{{.NextRunTimeText}}</td>
+                    <td class="human-readable"></td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- jQuery -->
+    <script src="/static/jquery.min.js"></script>
+    <!-- DataTables JS -->
+    <script src="/static/datatables.min.js"></script>
+    <!-- Include cronstrue library -->
+    <script src="/static/cronstrue.min.js"></script>
+    <!-- DataTables initialization and cron conversion -->
+    <script>
+        $(document).ready(function() {
+            $('#periodic-jobs').DataTable({
+                "paging": false,
+                "order": [[4, "asc"]] // Default ordering by Next Run Time (Timestamp)
+            });
+
+            // Convert cron spec to human-readable format
+            $('#periodic-jobs tbody tr').each(function() {
+                var spec = $(this).find('td:nth-child(4)').text();
+                try {
+                    var humanReadable = cronstrue.toString(spec);
+                    $(this).find('.human-readable').text(humanReadable);
+                } catch (e) {
+                    $(this).find('.human-readable').text('Invalid cron spec');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
