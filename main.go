@@ -24,14 +24,19 @@ var (
 	cacheTime      time.Time
 	cacheExpiry    = 1 * time.Minute
 	nomadAddress   string
-	nomadNamespace = "default"
-	nomadToken     = ""
+	nomadNamespace string
+	nomadToken     string
 )
 
 func init() {
 	nomadAddress = os.Getenv("NOMAD_ADDR")
 	if nomadAddress == "" {
 		nomadAddress = "http://127.0.0.1:4646"
+	}
+	nomadToken = os.Getenv("NOMAD_TOKEN")
+	nomadNamespace = os.Getenv("NOMAD_NAMESPACE")
+	if nomadNamespace == "" {
+		nomadNamespace = "default"
 	}
 }
 
@@ -80,46 +85,60 @@ func getNextRunTime(spec string) (time.Time, error) {
 }
 
 func periodicJobsHandler(c *gin.Context) {
+	// Fetch jobs from Nomad if the cache is expired
 	if time.Since(cacheTime) > cacheExpiry {
 		jobs, err := fetchNomadJobs()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			log.Printf("Error fetching Nomad jobs: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch Nomad jobs"})
 			return
 		}
 
 		cache = jobs
 		cacheTime = time.Now()
 	}
+
 	log.Printf("Fetched %d jobs from cache", len(cache))
 	var periodicJobs []map[string]interface{}
+
+	// Loop through cached jobs and fetch their details
 	for _, jobStub := range cache {
-		if jobDetails, err := fetchJobDetails(jobStub.ID); err == nil {
-			if jobDetails.Periodic != nil {
-				spec := *jobDetails.Periodic.Spec
-				nextRunTime, err := getNextRunTime(spec)
-				if err == nil {
-					periodicJobs = append(periodicJobs, map[string]interface{}{
-						"ID":              *jobDetails.ID,
-						"Name":            *jobDetails.Name,
-						"Status":          *jobDetails.Status,
-						"Type":            *jobDetails.Type,
-						"Spec":            spec,
-						"NextRunTime":     nextRunTime,
-						"NextRunTimeText": nextRunTime.Format(time.RFC1123),
-					})
-				}
+		jobDetails, err := fetchJobDetails(jobStub.ID)
+		if err != nil {
+			log.Printf("Error fetching details for job %s: %v", jobStub.ID, err)
+			continue // Skip to the next job if there's an error
+		}
+
+		if jobDetails.Periodic != nil {
+			spec := *jobDetails.Periodic.Spec
+			nextRunTime, err := getNextRunTime(spec)
+			if err != nil {
+				log.Printf("Error calculating next run time for job %s: %v", *jobDetails.ID, err)
+				continue // Skip to the next job if there's an error
 			}
+
+			periodicJobs = append(periodicJobs, map[string]interface{}{
+				"ID":              *jobDetails.ID,
+				"Name":            *jobDetails.Name,
+				"Status":          *jobDetails.Status,
+				"Type":            *jobDetails.Type,
+				"Spec":            spec,
+				"NextRunTime":     nextRunTime,
+				"NextRunTimeText": nextRunTime.Format(time.RFC1123),
+			})
 		}
 	}
 
 	log.Printf("Fetched %d periodic jobs", len(periodicJobs))
 
+	// Render the template with the periodic jobs
 	c.HTML(http.StatusOK, "periodic_jobs.html", gin.H{
 		"periodicJobs":   periodicJobs,
 		"nomadAddress":   nomadAddress,
 		"nomadNamespace": nomadNamespace,
 	})
 }
+
 
 func allJobsHandler(c *gin.Context) {
 	if time.Since(cacheTime) > cacheExpiry {
