@@ -84,13 +84,20 @@ func getNextRunTime(spec string) (time.Time, error) {
 	return schedule.Next(time.Now()), nil
 }
 
+func handleNomadError(c *gin.Context, err error, message string) bool {
+	if err != nil {
+		log.Printf("%s: %v", message, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": message})
+		return true
+	}
+	return false
+}
+
 func periodicJobsHandler(c *gin.Context) {
 	// Fetch jobs from Nomad if the cache is expired
 	if time.Since(cacheTime) > cacheExpiry {
 		jobs, err := fetchNomadJobs()
-		if err != nil {
-			log.Printf("Error fetching Nomad jobs: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch Nomad jobs"})
+		if handleNomadError(c, err, "Error fetching Nomad jobs") {
 			return
 		}
 
@@ -104,8 +111,7 @@ func periodicJobsHandler(c *gin.Context) {
 	// Loop through cached jobs and fetch their details
 	for _, jobStub := range cache {
 		jobDetails, err := fetchJobDetails(jobStub.ID)
-		if err != nil {
-			log.Printf("Error fetching details for job %s: %v", jobStub.ID, err)
+		if handleNomadError(c, err, "Error fetching details for job "+jobStub.ID) {
 			continue // Skip to the next job if there's an error
 		}
 
@@ -114,7 +120,7 @@ func periodicJobsHandler(c *gin.Context) {
 			nextRunTime, err := getNextRunTime(spec)
 			if err != nil {
 				log.Printf("Error calculating next run time for job %s: %v", *jobDetails.ID, err)
-				continue // Skip to the next job if there's an error
+				nextRunTime = time.Time{} // Set nextRunTime to zero time in case of error
 			}
 
 			periodicJobs = append(periodicJobs, map[string]interface{}{
@@ -139,12 +145,10 @@ func periodicJobsHandler(c *gin.Context) {
 	})
 }
 
-
 func allJobsHandler(c *gin.Context) {
 	if time.Since(cacheTime) > cacheExpiry {
 		jobs, err := fetchNomadJobs()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if handleNomadError(c, err, "Error fetching all Nomad jobs") {
 			return
 		}
 
