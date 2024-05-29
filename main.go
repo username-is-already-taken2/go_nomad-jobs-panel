@@ -20,12 +20,14 @@ import (
 var embeddedFiles embed.FS
 
 var (
-	cache          []*api.JobListStub
-	cacheTime      time.Time
-	cacheExpiry    = 1 * time.Minute
-	nomadAddress   string
-	nomadNamespace string
-	nomadToken     string
+	jobsCache             []*api.JobListStub
+	periodicJobsCache []map[string]interface{}
+	cacheTime         time.Time
+	periodicCacheTime time.Time
+	cacheExpiry       = 1 * time.Minute
+	nomadAddress      string
+	nomadNamespace    string
+	nomadToken        string
 )
 
 func init() {
@@ -94,61 +96,62 @@ func handleNomadError(c *gin.Context, err error, message string) bool {
 }
 
 func periodicJobsHandler(c *gin.Context) {
-	// Fetch jobs from Nomad if the cache is expired
-	if time.Since(cacheTime) > cacheExpiry {
+	if time.Since(periodicCacheTime) > cacheExpiry {
 		jobs, err := fetchNomadJobs()
-		if handleNomadError(c, err, "Error fetching Nomad jobs") {
+		if handleNomadError(c, err, "Error fetching periodic Nomad jobs") {
 			return
 		}
 
-		cache = jobs
-		cacheTime = time.Now()
-	}
+		var periodicJobs []map[string]interface{}
+		for _, job := range jobs {
+			if job.Type == "batch" {
+				jobDetails, err := fetchJobDetails(job.ID)
+				if handleNomadError(c, err, "Error fetching Nomad job details") {
+					return
+				}
+				if jobDetails == nil || jobDetails.Periodic == nil || jobDetails.Periodic.Spec == nil {
+					continue
+				}
 
-	log.Printf("Fetched %d jobs from cache", len(cache))
-	var periodicJobs []map[string]interface{}
+				spec := *jobDetails.Periodic.Spec
+				nextRunTime, err := getNextRunTime(spec)
+				if handleNomadError(c, err, "Error parsing cron spec") {
+					return
+				}
 
-	// Loop through cached jobs and fetch their details
-	for _, jobStub := range cache {
-		jobDetails, err := fetchJobDetails(jobStub.ID)
-		if handleNomadError(c, err, "Error fetching details for job "+jobStub.ID) {
-			continue // Skip to the next job if there's an error
+				tzName := "UTC"
+				if jobDetails.Periodic.TimeZone != nil {
+					tzName = *jobDetails.Periodic.TimeZone
+				}
+				loc, err := time.LoadLocation(tzName)
+				if handleNomadError(c, err, "Error loading timezone") {
+					return
+				}
+				nextRunTimeTz := nextRunTime.In(loc)
+
+				periodicJobs = append(periodicJobs, map[string]interface{}{
+					"ID":               *jobDetails.ID,
+					"Name":             *jobDetails.Name,
+					"Status":           *jobDetails.Status,
+					"Type":             *jobDetails.Type,
+					"Spec":             spec,
+					"TimeZone":         tzName,
+					"NextRunTimeTz":    nextRunTimeTz,
+					"NextRunTimeTzUtc": nextRunTimeTz.UTC(),
+				})
+			}
 		}
 
-		if jobDetails.Periodic != nil {
-			spec := *jobDetails.Periodic.Spec
-			tzName := *jobDetails.Periodic.TimeZone
-			// Load the location for the timezone
-			loc, err := time.LoadLocation(tzName)
-			if err != nil {
-				log.Printf("Error loading location:", err)
-				return
-			}
-			nextRunTime, err := getNextRunTime(spec)
-			if err != nil {
-				log.Printf("Error calculating next run time for job %s: %v", *jobDetails.ID, err)
-				nextRunTime = time.Time{} // Set nextRunTime to zero time in case of error
-			}
-			nextRunTimeTz := nextRunTime.In(loc)
-
-			periodicJobs = append(periodicJobs, map[string]interface{}{
-				"ID":               *jobDetails.ID,
-				"Name":             *jobDetails.Name,
-				"Status":           *jobDetails.Status,
-				"Type":             *jobDetails.Type,
-				"Spec":             spec,
-				"TimeZone":         tzName,
-				"NextRunTimeTz":    nextRunTimeTz,
-				"NextRunTimeTzUtc": nextRunTimeTz.UTC(),
-			})
-		}
+		log.Printf("Fetched %d periodic jobs, setting cache...", len(periodicJobs))
+		periodicJobsCache = periodicJobs
+		periodicCacheTime = time.Now()
+	} else {
+		log.Printf("Using periodicJobsCache for another %d seconds...", int((cacheExpiry - time.Since(periodicCacheTime)).Seconds()))
 	}
-
-	log.Printf("Fetched %d periodic jobs", len(periodicJobs))
 
 	// Render the template with the periodic jobs
 	c.HTML(http.StatusOK, "periodic_jobs.html", gin.H{
-		"periodicJobs":   periodicJobs,
+		"periodicJobs":   periodicJobsCache,
 		"nomadAddress":   nomadAddress,
 		"nomadNamespace": nomadNamespace,
 	})
@@ -161,12 +164,14 @@ func allJobsHandler(c *gin.Context) {
 			return
 		}
 
-		cache = jobs
+		jobsCache = jobs
 		cacheTime = time.Now()
+	} else {
+		log.Printf("Using jobsCache for another %d seconds...", int((cacheExpiry - time.Since(cacheTime)).Seconds()))
 	}
 
 	c.HTML(http.StatusOK, "all_jobs.html", gin.H{
-		"jobs": cache,
+		"jobs": jobsCache,
 	})
 }
 
