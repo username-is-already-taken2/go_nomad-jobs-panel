@@ -4,7 +4,7 @@ job "weekly-job" {
 
   periodic {
     cron      = "0 0 * * 0"  # Runs weekly on Sunday at midnight
-    time_zone  = "UTC"
+    time_zone  = "America/Los_Angeles"
   }
 
   group "example" {

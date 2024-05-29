@@ -117,20 +117,29 @@ func periodicJobsHandler(c *gin.Context) {
 
 		if jobDetails.Periodic != nil {
 			spec := *jobDetails.Periodic.Spec
+			tzName := *jobDetails.Periodic.TimeZone
+			// Load the location for the timezone
+			loc, err := time.LoadLocation(tzName)
+			if err != nil {
+				log.Printf("Error loading location:", err)
+				return
+			}
 			nextRunTime, err := getNextRunTime(spec)
 			if err != nil {
 				log.Printf("Error calculating next run time for job %s: %v", *jobDetails.ID, err)
 				nextRunTime = time.Time{} // Set nextRunTime to zero time in case of error
 			}
+			nextRunTimeTz := nextRunTime.In(loc)
 
 			periodicJobs = append(periodicJobs, map[string]interface{}{
-				"ID":              *jobDetails.ID,
-				"Name":            *jobDetails.Name,
-				"Status":          *jobDetails.Status,
-				"Type":            *jobDetails.Type,
-				"Spec":            spec,
-				"NextRunTime":     nextRunTime,
-				"NextRunTimeText": nextRunTime.Format(time.RFC1123),
+				"ID":               *jobDetails.ID,
+				"Name":             *jobDetails.Name,
+				"Status":           *jobDetails.Status,
+				"Type":             *jobDetails.Type,
+				"Spec":             spec,
+				"TimeZone":         tzName,
+				"NextRunTimeTz":    nextRunTimeTz,
+				"NextRunTimeTzUtc": nextRunTimeTz.UTC(),
 			})
 		}
 	}
@@ -171,6 +180,9 @@ func main() {
 	tmpl := template.Must(template.New("").ParseFS(embeddedFiles, "templates/*.html"))
 	r.SetHTMLTemplate(tmpl)
 
+	// Serve favicon.ico specifically from the static directory
+	r.StaticFile("/favicon.ico", "./static/favicon.ico")
+
 	// Correctly serve static files
 	staticServer := http.FileServer(http.FS(embeddedFiles))
 	r.GET("/static/*filepath", func(c *gin.Context) {
@@ -181,6 +193,8 @@ func main() {
 	r.GET("/", periodicJobsHandler)
 	r.GET("/periodic-jobs", periodicJobsHandler)
 	r.GET("/all-jobs", allJobsHandler)
+
+	log.Println("Starting server...")
 
 	if err := r.Run(); err != nil {
 		log.Fatal("Unable to start:", err)

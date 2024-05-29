@@ -34,8 +34,9 @@
                     <th>Status</th>
                     <th>Type</th>
                     <th>Schedule</th>
-                    <th>Next Run Time (Timestamp)</th>
-                    <th>Next Run Time (Text)</th>
+                    <th>Job Timezone</th>
+                    <th>Next Run Time (Job Timezone)</th>
+                    <th>Next Run Time (UTC)</th>
                     <th>Schedule (Human-Readable)</th>
                 </tr>
             </thead>
@@ -46,8 +47,9 @@
                     <td>{{.Status}}</td>
                     <td>{{.Type}}</td>
                     <td>{{.Spec}}</td>
-                    <td>{{.NextRunTime}}</td>
-                    <td>{{.NextRunTimeText}}</td>
+                    <td>{{.TimeZone}}</td>
+                    <td>{{.NextRunTimeTz}}</td>
+                    <td>{{.NextRunTimeTzUtc}}</td>
                     <td class="human-readable"></td>
                 </tr>
                 {{end}}
@@ -66,7 +68,7 @@
         $(document).ready(function() {
             $('#periodic-jobs').DataTable({
                 "paging": false,
-                "order": [[4, "asc"]] // Default ordering by Next Run Time (Timestamp)
+                "order": [[6, "asc"]] // Default ordering by Next Run Time (Timestamp)
             });
 
             // Convert cron spec to human-readable format

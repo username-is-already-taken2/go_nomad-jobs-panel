@@ -4,7 +4,7 @@ job "hourly-job" {
 
   periodic {
     cron      = "0 * * * *"  # Runs hourly at the top of the hour
-    time_zone  = "UTC"
+    time_zone = "Europe/London"
   }
 
   group "example" {
